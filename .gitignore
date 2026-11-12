@@ -40,4 +40,16 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# android
+android/local.properties
+android/.gradle
+android/build
+android/app/build
+*.apk
+*.aab
+
+# sqlite local db
+*.db
+*.db-journal
+
 /src/generated/prisma

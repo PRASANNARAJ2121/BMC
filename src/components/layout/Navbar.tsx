@@ -222,7 +222,14 @@ export function Navbar() {
           </div>
 
           {/* Mobile menu button */}
-          <div className="lg:hidden flex items-center">
+          <div className="lg:hidden flex items-center gap-2">
+            <Link
+              href="/technologies"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 border border-orange-200 text-[#E05A1B] text-xs font-bold rounded-lg"
+            >
+              <Cpu className="w-4 h-4 text-[#E05A1B]" />
+              <span>AI Chat</span>
+            </Link>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -237,6 +244,17 @@ export function Navbar() {
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
         <div className="lg:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-3">
+          <Link
+            href="/technologies"
+            onClick={() => setMobileMenuOpen(false)}
+            className="flex items-center justify-between px-3.5 py-2.5 text-base font-bold text-white bg-[#E05A1B] rounded-xl shadow-sm"
+          >
+            <div className="flex items-center gap-2.5">
+              <Cpu className="w-5 h-5 text-white" />
+              <span>AI Automotive Assistant</span>
+            </div>
+            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full font-mono">14 Agents</span>
+          </Link>
           <Link
             href="/automobiles"
             onClick={() => setMobileMenuOpen(false)}

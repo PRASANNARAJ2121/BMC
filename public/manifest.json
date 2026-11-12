@@ -16,19 +16,24 @@
   ],
   "shortcuts": [
     {
+      "name": "AI Automotive Concierge",
+      "url": "/technologies",
+      "description": "Role-Governed Diagnostic & Advisory Chatbot"
+    },
+    {
       "name": "Inspector Tool",
       "url": "/inspector",
       "description": "120-Point Doorstep Vehicle Technical Assessment"
     },
     {
-      "name": "Acquisition Queue",
-      "url": "/admin/acquisition",
-      "description": "Confidential Vehicle Intake"
+      "name": "My Garage",
+      "url": "/customer/garage",
+      "description": "Digital Vehicle Glovebox & Service Records"
     },
     {
-      "name": "Workshop Job Cards",
-      "url": "/admin/jobs",
-      "description": "Active Service Orders"
+      "name": "Certified Resale",
+      "url": "/automobiles",
+      "description": "Browse Company-Owned Pre-Owned Cars"
     }
   ]
 }
