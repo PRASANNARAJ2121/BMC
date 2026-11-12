@@ -1,0 +1,1046 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// ----------------------------------------------------
+// 1. IDENTITY, ROLES, BRANCHES & DEPARTMENTS
+// ----------------------------------------------------
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  passwordHash   String
+  fullName       String
+  phone          String         @default("")
+  active         Boolean        @default(true)
+  mfaEnabled     Boolean        @default(false)
+  mfaSecret      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  userRoles      UserRole[]
+  sessions       Session[]
+  sellerProfile  SellerProfile?
+  auditEvents    AuditEvent[]
+  memberships    Membership[]
+  reservations   VehicleReservation[]
+  saleTransactions SaleTransaction[]
+}
+
+model Role {
+  id          String     @id @default(uuid())
+  name        String     @unique // SUPER_ADMIN, BUSINESS_OWNER, ACQUISITION_MANAGER, ACQUISITION_EXECUTIVE, INSPECTOR, COMPLIANCE_OFFICER, FINANCE_OFFICER, WORKSHOP_MANAGER, SERVICE_ADVISOR, TECHNICIAN, INVENTORY_MANAGER, SALES_MANAGER, SALES_EXECUTIVE, FLEET_MANAGER, CUSTOMER_SUPPORT, CUSTOMER, SELLER
+  description String     @default("")
+  userRoles   UserRole[]
+}
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  roleId    String
+  branchId  String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roleId, branchId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Branch {
+  id          String     @id @default(uuid())
+  name        String
+  code        String     @unique // e.g. BMC-HQ, BMC-CHN, BMC-BLR
+  address     String     @default("")
+  city        String     @default("")
+  state       String     @default("")
+  postalCode  String     @default("")
+  phone       String     @default("")
+  email       String     @default("")
+  gstin       String     @default("")
+  active      Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+
+  departments Department[]
+  userRoles   UserRole[]
+  acquisitionCases AcquisitionCase[]
+  companyVehicles  CompanyVehicle[]
+  appointments     ServiceAppointment[]
+  jobCards         JobCard[]
+  invoices         Invoice[]
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  branchId  String
+  name      String   // AUTOMOBILES, GARAGE, ELECTRICALS, ELECTRONICS, AC, PARTS, FLEET, MEMBERSHIP
+  code      String
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------
+// 2. CONFIDENTIAL PRIVATE ACQUISITION DOMAIN
+//    (STRICTLY ISOLATED from public inventory)
+// ----------------------------------------------------
+
+model SellerProfile {
+  id                 String            @id @default(uuid())
+  userId             String            @unique
+  registeredAddress  String            @default("")
+  city               String            @default("")
+  state              String            @default("")
+  postalCode         String            @default("")
+  identityVerified   Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  acquisitionCases   AcquisitionCase[]
+}
+
+model AcquisitionCase {
+  id                    String                    @id @default(uuid())
+  caseNumber            String                    @unique // e.g. ACQ-2026-0001
+  sellerProfileId       String
+  branchId              String?
+  status                String                    @default("DRAFT") // DRAFT, SUBMITTED, DOCUMENT_REVIEW, NEEDS_CLARIFICATION, INSPECTION_PENDING, INSPECTION_SCHEDULED, INSPECTION_COMPLETE, VALUATION_PENDING, OFFER_ISSUED, OFFER_ACCEPTED, OFFER_DECLINED, OFFER_EXPIRED, PURCHASE_DOCUMENTS_PENDING, PAYMENT_PENDING, OWNERSHIP_TRANSFER_PENDING, ACQUIRED, REJECTED, WITHDRAWN, CANCELLED, BLOCKED
+  sellerAskingPrice     Float                     @default(0)
+  internalValuation     Float                     @default(0)
+  agreedPurchasePrice   Float                     @default(0)
+  assignedToId          String?
+  internalNotes         String                    @default("")
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  sellerProfile         SellerProfile             @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
+  branch                Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  vehicleDetails        AcquisitionVehicleDetails?
+  documents             PrivateDocument[]
+  communications        SellerCommunication[]
+  verificationTasks     VerificationTask[]
+  inspections           AcquisitionInspection[]
+  valuations            Valuation[]
+  purchaseOffers        PurchaseOffer[]
+  purchaseAgreement     PurchaseAgreement?
+  ownershipTransferCase OwnershipTransferCase?
+  purchaseTransaction   PurchaseTransaction?
+  companyVehicle        CompanyVehicle?
+}
+
+model AcquisitionVehicleDetails {
+  id                    String          @id @default(uuid())
+  caseId                String          @unique
+  make                  String
+  model                 String
+  variant               String          @default("")
+  year                  Int
+  registrationNumber    String          @default("")
+  vin                   String          @default("")
+  engineNumber          String          @default("")
+  chassisNumber         String          @default("")
+  fuelType              String          @default("Petrol") // Petrol, Diesel, CNG, Electric, Hybrid
+  transmission          String          @default("Manual") // Manual, Automatic
+  odometerKm            Int             @default(0)
+  ownershipCount        Int             @default(1)
+  registeredOwnerName   String          @default("")
+  isCommercial          Boolean         @default(false)
+  loanHypothecation     Boolean         @default(false)
+  outstandingFinance    Float           @default(0)
+  financierName         String          @default("")
+  nocReceived           Boolean         @default(false)
+  knownAccidents        Boolean         @default(false)
+  knownDamages          String          @default("")
+  floodFireDamage       Boolean         @default(false)
+  modificationsNotes    String          @default("")
+  exteriorColor         String          @default("")
+  locationCity          String          @default("")
+  locationState         String          @default("")
+
+  acquisitionCase       AcquisitionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model PrivateDocument {
+  id                 String               @id @default(uuid())
+  caseId             String
+  documentType       String               // RC_COPY, INSURANCE_COPY, NOC_LETTER, SELLER_ID_PROOF, INVOICE, SERVICE_RECORDS
+  fileName           String
+  fileKey            String               // Hashed storage path in private-uploads
+  fileSize           Int                  @default(0)
+  mimeType           String               @default("application/pdf")
+  checksumSha256     String               @default("")
+  verificationStatus String               @default("PENDING") // PENDING, VERIFIED, REJECTED
+  verifiedById       String?
+  verifiedAt         DateTime?
+  notes              String               @default("")
+  createdAt          DateTime             @default(now())
+
+  acquisitionCase    AcquisitionCase      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  accessEvents       DocumentAccessEvent[]
+}
+
+model DocumentAccessEvent {
+  id           String          @id @default(uuid())
+  documentId   String
+  accessedById String
+  accessedRole String
+  purpose      String          @default("Audit/Review")
+  ipAddress    String          @default("")
+  timestamp    DateTime        @default(now())
+
+  document     PrivateDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+model SellerCommunication {
+  id              String          @id @default(uuid())
+  caseId          String
+  senderType      String          // STAFF, SELLER, SYSTEM
+  senderId        String?
+  message         String
+  isInternalOnly  Boolean         @default(false) // If true, NEVER exposed to seller
+  createdAt       DateTime        @default(now())
+
+  acquisitionCase AcquisitionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model VerificationTask {
+  id                String          @id @default(uuid())
+  caseId            String
+  taskType          String          // IDENTITY_AUTHORITY, RC_REGISTRATION, HYPOTHECATION_NOC, THEFT_DISPUTE_CHECK, ODOMETER_VERIFICATION, ACCIDENT_HISTORY
+  status            String          @default("PENDING") // PENDING, IN_PROGRESS, PASSED, FAILED, WAIVED
+  assignedToId      String?
+  evidenceReference String          @default("")
+  sourceMethod      String          @default("Manual Document Verification")
+  reviewNotes       String          @default("")
+  completedAt       DateTime?
+  createdAt         DateTime        @default(now())
+
+  acquisitionCase   AcquisitionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model AcquisitionInspection {
+  id              String             @id @default(uuid())
+  caseId          String
+  inspectionNumber String            @unique // e.g. INSP-2026-0001
+  inspectorId     String?
+  branchId        String?
+  status          String             @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
+  scheduledDate   DateTime?
+  completedDate   DateTime?
+  overallScore    Int                @default(0) // 0 - 100
+  summaryNotes    String             @default("")
+  internalNotes   String             @default("")
+  version         Int                @default(1)
+  createdAt       DateTime           @default(now())
+
+  acquisitionCase AcquisitionCase    @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  sections        InspectionSection[]
+}
+
+model InspectionSection {
+  id           String                  @id @default(uuid())
+  inspectionId String
+  sectionKey   String                  // EXTERIOR_STRUCTURE, INTERIOR_SAFETY, ENGINE_COOLING, TRANSMISSION_CLUTCH, BRAKES_WHEELS_TYRES, SUSPENSION_STEERING, ELECTRICAL_WIRING, ELECTRONICS_ECU, AC_VENTILATION, ROAD_TEST, DOCUMENT_MATCH
+  score        Int                     @default(100)
+  notes        String                  @default("")
+
+  inspection   AcquisitionInspection   @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  findings     InspectionFinding[]
+}
+
+model InspectionFinding {
+  id                    String            @id @default(uuid())
+  sectionId             String
+  componentName         String
+  status                String            @default("CONFIRMED") // CONFIRMED, SUSPECTED, NOT_INSPECTED, UNABLE_TO_VERIFY, REPAIRED, RECHECKED
+  severity              String            @default("NONE") // NONE, MINOR, MODERATE, CRITICAL
+  description           String            @default("")
+  estimatedRepairCost   Float             @default(0)
+  buyerFacingDisclosure Boolean           @default(false) // TRUE if approved for disclosure on public listing
+
+  section               InspectionSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+}
+
+model Valuation {
+  id                        String          @id @default(uuid())
+  caseId                    String
+  estimatedMarketValue      Float           @default(0)
+  proposedOfferPrice        Float           @default(0)
+  estimatedReconditioningCost Float         @default(0)
+  holdingCostEstimate       Float           @default(0)
+  targetMargin              Float           @default(0)
+  confidenceScore           Float           @default(0.8)
+  notes                     String          @default("")
+  createdById               String?
+  createdAt                 DateTime        @default(now())
+
+  acquisitionCase           AcquisitionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model PurchaseOffer {
+  id                   String                 @id @default(uuid())
+  caseId               String
+  currentVersionNumber Int                    @default(1)
+  status               String                 @default("DRAFT") // DRAFT, ISSUED, ACCEPTED, DECLINED, EXPIRED, WITHDRAWN
+  offeredPrice         Float                  @default(0)
+  termsAndConditions   String                 @default("")
+  expiresAt            DateTime?
+  acceptedAt           DateTime?
+  declinedAt           DateTime?
+  declineReason        String                 @default("")
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  acquisitionCase      AcquisitionCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  versions             PurchaseOfferVersion[]
+}
+
+model PurchaseOfferVersion {
+  id              String        @id @default(uuid())
+  offerId         String
+  versionNumber   Int
+  offeredAmount   Float
+  breakdownJson   String        @default("{}")
+  terms           String        @default("")
+  issuedById      String?
+  createdAt       DateTime      @default(now())
+
+  offer           PurchaseOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+}
+
+model PurchaseAgreement {
+  id                      String          @id @default(uuid())
+  caseId                  String          @unique
+  agreementNumber         String          @unique // e.g. AGR-2026-0001
+  agreedPrice             Float
+  sellerDeclarationSigned Boolean         @default(false)
+  bmcAuthorizedById       String?
+  signedDate              DateTime?
+  documentKey             String          @default("")
+  status                  String          @default("EXECUTED")
+  createdAt               DateTime        @default(now())
+
+  acquisitionCase         AcquisitionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  transactions            PurchaseTransaction[]
+}
+
+model OwnershipTransferCase {
+  id                      String          @id @default(uuid())
+  caseId                  String          @unique
+  rtoState                String          @default("")
+  rtoCode                 String          @default("")
+  applicationNumber       String          @default("")
+  form29Signed            Boolean         @default(false)
+  form30Signed            Boolean         @default(false)
+  nocObtained             Boolean         @default(false)
+  hypothecationRemoved    Boolean         @default(false)
+  status                  String          @default("PENDING") // PENDING, SUBMITTED_TO_RTO, UNDER_REVIEW, RC_TRANSFERRED_TO_BMC, REJECTED
+  transferEvidenceKey     String          @default("")
+  transferCompletedDate   DateTime?
+  approvedById            String?
+  notes                   String          @default("")
+  createdAt               DateTime        @default(now())
+
+  acquisitionCase         AcquisitionCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model PurchaseTransaction {
+  id                   String            @id @default(uuid())
+  caseId               String            @unique
+  agreementId          String?
+  amount               Float
+  paymentMethod        String            @default("BANK_TRANSFER") // BANK_TRANSFER, NEFT_RTGS, CHEQUE
+  transactionReference String            @default("")
+  status               String            @default("INITIATED") // INITIATED, SETTLED, FAILED
+  settledAt            DateTime?
+  reconciledById       String?
+  notes                String            @default("")
+  createdAt            DateTime          @default(now())
+
+  acquisitionCase      AcquisitionCase   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  agreement            PurchaseAgreement? @relation(fields: [agreementId], references: [id], onDelete: SetNull)
+}
+
+// ----------------------------------------------------
+// 3. COMPANY OWNED INVENTORY & PUBLIC RESALE DOMAIN
+//    (STRICT GATE: Only created after verified ownership)
+// ----------------------------------------------------
+
+model CompanyVehicle {
+  id                           String                @id @default(uuid())
+  stockNumber                  String                @unique // e.g. BMC-STK-001
+  acquisitionCaseId            String?               @unique // Internal reference ONLY - NEVER exposed publicly
+  make                         String
+  model                        String
+  variant                      String                @default("")
+  year                         Int
+  fuelType                     String                @default("Petrol")
+  transmission                 String                @default("Manual")
+  odometerKm                   Int                   @default(0)
+  exteriorColor                String                @default("")
+  acquisitionCost              Float                 @default(0)
+  totalReconditioningCost      Float                 @default(0)
+  otherCosts                   Float                 @default(0)
+  totalCostBasis               Float                 @default(0)
+  targetResalePrice            Float                 @default(0)
+  custodyBranchId              String?
+  currentCustodianId           String?
+  receivedDate                 DateTime              @default(now())
+  receivedConditionNotes       String                @default("")
+  keysCount                    Int                   @default(2)
+  toolsChecklistJson           String                @default("{}")
+  status                       String                @default("ACQUIRED") // ACQUIRED, RECONDITIONING, QUALITY_CHECK, APPROVED_FOR_RESALE, LISTED, RESERVED, SOLD, DELIVERY_PENDING, COMPLETED, ON_HOLD
+  legalSaleEligibilityApproved Boolean               @default(false) // HARD GATE
+  legalSaleApprovedById        String?
+  legalSaleApprovedAt          DateTime?
+  qcApproved                   Boolean               @default(false) // HARD GATE
+  qcApprovedById               String?
+  qcApprovedAt                 DateTime?
+  createdAt                    DateTime              @default(now())
+  updatedAt                    DateTime              @updatedAt
+
+  acquisitionCase              AcquisitionCase?      @relation(fields: [acquisitionCaseId], references: [id], onDelete: SetNull)
+  custodyBranch                Branch?               @relation(fields: [custodyBranchId], references: [id], onDelete: SetNull)
+  refurbishmentJobs            RefurbishmentJob[]
+  expenses                     VehicleExpense[]
+  qcChecks                     QualityControlCheck[]
+  publicListing                PublicVehicleListing?
+  saleTransactions             SaleTransaction[]
+}
+
+model RefurbishmentJob {
+  id                 String             @id @default(uuid())
+  vehicleId          String
+  jobNumber          String             @unique // e.g. RFB-2026-0001
+  category           String             // MECHANICAL, ELECTRICAL, ELECTRONICS, AC, TYRES, BODYWORK_PAINT, DETAILING
+  status             String             @default("PLANNED") // PLANNED, IN_PROGRESS, COMPLETED, ON_HOLD
+  totalLabourCost    Float              @default(0)
+  totalPartsCost     Float              @default(0)
+  managerNotes       String             @default("")
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime           @default(now())
+
+  vehicle            CompanyVehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  tasks              RefurbishmentTask[]
+  partConsumptions   PartConsumption[]
+}
+
+model RefurbishmentTask {
+  id           String           @id @default(uuid())
+  jobId        String
+  description  String
+  technicianId String?
+  status       String           @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  hoursSpent   Float            @default(0)
+  cost         Float            @default(0)
+
+  job          RefurbishmentJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model VehicleExpense {
+  id             String         @id @default(uuid())
+  vehicleId      String
+  expenseType    String         // PARTS, LABOUR, LOGISTICS, STORAGE, DETAILING, TAX, INSPECTION, OTHER
+  amount         Float
+  description    String         @default("")
+  referenceJobId String?
+  recordedById   String?
+  createdAt      DateTime       @default(now())
+
+  vehicle        CompanyVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+}
+
+model QualityControlCheck {
+  id            String         @id @default(uuid())
+  vehicleId     String
+  checklistJson String         @default("{}")
+  passed        Boolean        @default(false)
+  inspectorId   String?
+  notes         String         @default("")
+  inspectedAt   DateTime       @default(now())
+
+  vehicle       CompanyVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+}
+
+model PublicVehicleListing {
+  id                           String                @id @default(uuid())
+  stockNumber                  String                @unique
+  companyVehicleId             String                @unique
+  make                         String
+  model                        String
+  variant                      String                @default("")
+  year                         Int
+  fuelType                     String
+  transmission                 String
+  mileageKm                    Int
+  exteriorColor                String                @default("")
+  bodyType                     String                @default("Sedan") // Hatchback, Sedan, SUV, MUV, Luxury
+  askingPrice                  Float
+  isFeatured                   Boolean               @default(false)
+  isPublished                  Boolean               @default(false)
+  publishedAt                  DateTime?
+  keyFeaturesJson              String                @default("[]")
+  specificationsJson           String                @default("{}")
+  photosJson                   String                @default("[]")
+  inspectionSummaryJson        String                @default("{}")
+  repairsCompletedSummaryJson  String                @default("[]")
+  knownDefectsDisclosureJson   String                @default("[]")
+  ownershipCountDisclosure     Int                   @default(1)
+  reservationStatus            String                @default("AVAILABLE") // AVAILABLE, RESERVED, SOLD
+  activeReservationId          String?
+  reservedUntil                DateTime?
+  viewsCount                   Int                   @default(0)
+  enquiryCount                 Int                   @default(0)
+  createdAt                    DateTime              @default(now())
+  updatedAt                    DateTime              @updatedAt
+
+  companyVehicle               CompanyVehicle        @relation(fields: [companyVehicleId], references: [id], onDelete: Cascade)
+  enquiries                    BuyerEnquiry[]
+  testDriveRequests            TestDriveRequest[]
+  reservations                 VehicleReservation[]
+  saleTransactions             SaleTransaction[]
+}
+
+model BuyerEnquiry {
+  id                 String               @id @default(uuid())
+  listingId          String
+  vehicleStockNumber String
+  customerName       String
+  customerEmail      String               @default("")
+  customerPhone      String
+  message            String               @default("")
+  status             String               @default("NEW") // NEW, IN_PROGRESS, CONTACTED, CLOSED
+  assignedToId       String?
+  createdAt          DateTime             @default(now())
+
+  listing            PublicVehicleListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model TestDriveRequest {
+  id                 String               @id @default(uuid())
+  listingId          String
+  customerName       String
+  customerEmail      String               @default("")
+  customerPhone      String
+  preferredDate      DateTime
+  preferredTimeSlot  String               @default("Morning")
+  branchId           String?
+  status             String               @default("REQUESTED") // REQUESTED, CONFIRMED, COMPLETED, CANCELLED
+  notes              String               @default("")
+  createdAt          DateTime             @default(now())
+
+  listing            PublicVehicleListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model VehicleReservation {
+  id               String               @id @default(uuid())
+  listingId        String
+  customerUserId   String?
+  reservationNumber String              @unique // e.g. RSV-2026-0001
+  bookingAmount    Float                @default(10000)
+  status           String               @default("ACTIVE") // PENDING, ACTIVE, EXPIRED, CANCELLED, CONVERTED_TO_SALE
+  expiresAt        DateTime
+  idempotencyKey   String               @unique
+  paymentReference String               @default("")
+  createdAt        DateTime             @default(now())
+
+  listing          PublicVehicleListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  customer         User?                @relation(fields: [customerUserId], references: [id], onDelete: SetNull)
+}
+
+model SaleTransaction {
+  id                 String                @id @default(uuid())
+  listingId          String?
+  companyVehicleId   String
+  buyerUserId        String?
+  buyerName          String
+  buyerPhone         String
+  buyerEmail         String                @default("")
+  salePrice          Float
+  taxAmount          Float                 @default(0)
+  totalAmount        Float
+  invoiceNumber      String                @unique // e.g. BMC-SLS-2026-0001
+  paymentStatus      String                @default("COMPLETED") // PENDING, PARTIAL, COMPLETED
+  deliveryStatus     String                @default("PENDING") // PENDING, SCHEDULED, DELIVERED
+  deliveryDate       DateTime?
+  soldById           String?
+  createdAt          DateTime              @default(now())
+
+  listing            PublicVehicleListing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  companyVehicle     CompanyVehicle        @relation(fields: [companyVehicleId], references: [id], onDelete: Cascade)
+  buyer              User?                 @relation(fields: [buyerUserId], references: [id], onDelete: SetNull)
+  deliveryRecord     DeliveryRecord?
+}
+
+model DeliveryRecord {
+  id                    String          @id @default(uuid())
+  saleTransactionId     String          @unique
+  odometerAtDelivery    Int
+  handoverChecklistJson String          @default("{}")
+  buyerSignedAt         DateTime?
+  deliveredById         String?
+  notes                 String          @default("")
+  deliveredAt           DateTime        @default(now())
+
+  saleTransaction       SaleTransaction @relation(fields: [saleTransactionId], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------
+// 4. WORKSHOP, GARAGE, ELECTRICALS, ELECTRONICS & AC
+// ----------------------------------------------------
+
+model ServiceAppointment {
+  id                 String    @id @default(uuid())
+  appointmentNumber  String    @unique // e.g. APT-2026-0001
+  customerUserId     String?
+  customerName       String
+  customerPhone      String
+  customerEmail      String    @default("")
+  vehicleMake        String
+  vehicleModel       String
+  vehicleRegNumber   String    @default("")
+  serviceCategory    String    // GARAGE_GENERAL, ENGINE_TRANSMISSION, ELECTRICALS, ELECTRONICS, AIR_CONDITIONING, INSPECTION, FLEET_MAINTENANCE
+  preferredDate      DateTime
+  preferredTimeSlot  String    @default("09:00 - 11:00")
+  branchId           String?
+  issueDescription   String    @default("")
+  status             String    @default("REQUESTED") // REQUESTED, CONFIRMED, VEHICLE_RECEIVED, IN_PROGRESS, READY, DELIVERED, CANCELLED
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  branch             Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  jobCards           JobCard[]
+}
+
+model JobCard {
+  id                   String               @id @default(uuid())
+  jobNumber            String               @unique // e.g. JC-2026-0001
+  appointmentId        String?
+  branchId             String?
+  customerName         String
+  customerPhone        String
+  customerEmail        String               @default("")
+  vehicleRegNumber     String
+  vehicleMake          String
+  vehicleModel         String
+  odometerIn           Int                  @default(0)
+  fuelLevel            String               @default("1/2")
+  category             String               @default("GARAGE") // GARAGE, ELECTRICALS, ELECTRONICS, AC
+  status               String               @default("VEHICLE_RECEIVED") // VEHICLE_RECEIVED, ESTIMATE_PENDING, ESTIMATE_APPROVED, IN_PROGRESS, QC_PENDING, READY, INVOICED, DELIVERED, CANCELLED
+  serviceAdvisorId     String?
+  primaryTechnicianId  String?
+  customerConcerns     String               @default("")
+  diagnosticNotes      String               @default("")
+  labourTotal          Float                @default(0)
+  partsTotal           Float                @default(0)
+  taxTotal             Float                @default(0)
+  grandTotal           Float                @default(0)
+  nextServiceDate      DateTime?
+  nextServiceKm        Int?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  appointment          ServiceAppointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  branch               Branch?              @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  tasks                JobTask[]
+  estimates            Estimate[]
+  invoices             Invoice[]
+  partConsumptions     PartConsumption[]
+  serviceHistory       ServiceHistoryRecord?
+}
+
+model JobTask {
+  id              String   @id @default(uuid())
+  jobCardId       String
+  description     String
+  category        String   @default("MECHANICAL") // MECHANICAL, ELECTRICAL, ELECTRONICS, AC, DIAGNOSTIC
+  technicianId    String?
+  status          String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  estimatedHours  Float    @default(1.0)
+  actualHours     Float    @default(0)
+  labourRate      Float    @default(500)
+  totalLabourCost Float    @default(500)
+
+  jobCard         JobCard  @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+}
+
+model Estimate {
+  id                   String    @id @default(uuid())
+  jobCardId            String
+  estimateNumber       String    @unique // e.g. EST-2026-0001
+  itemsJson            String    @default("[]")
+  labourTotal          Float     @default(0)
+  partsTotal           Float     @default(0)
+  taxTotal             Float     @default(0)
+  grandTotal           Float     @default(0)
+  status               String    @default("DRAFT") // DRAFT, PRESENTED, APPROVED_BY_CUSTOMER, REJECTED
+  customerApprovedAt   DateTime?
+  customerSignatureNote String   @default("")
+  createdAt            DateTime  @default(now())
+
+  jobCard              JobCard   @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id                String    @id @default(uuid())
+  invoiceNumber     String    @unique // e.g. BMC-INV-2026-0001
+  jobCardId         String?
+  branchId          String?
+  customerName      String
+  customerPhone     String
+  customerGstin     String    @default("")
+  subtotal          Float
+  cgstRate          Float     @default(9.0) // 9% CGST
+  cgstAmount        Float     @default(0)
+  sgstRate          Float     @default(9.0) // 9% SGST
+  sgstAmount        Float     @default(0)
+  grandTotal        Float
+  currency          String    @default("INR")
+  paymentStatus     String    @default("PAID") // UNPAID, PARTIAL, PAID, REFUNDED
+  paymentMethod     String    @default("UPI") // UPI, CARD, CASH, BANK_TRANSFER
+  paidAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  jobCard           JobCard?  @relation(fields: [jobCardId], references: [id], onDelete: SetNull)
+  branch            Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+}
+
+model ServiceHistoryRecord {
+  id                 String   @id @default(uuid())
+  jobCardId          String   @unique
+  customerUserId     String?
+  vehicleRegNumber   String
+  vehicleDescription String   @default("")
+  serviceDate        DateTime @default(now())
+  odometerKm         Int      @default(0)
+  serviceSummary     String   @default("")
+  invoiceTotal       Float    @default(0)
+  nextServiceDate    DateTime?
+  nextServiceKm      Int?
+  createdAt          DateTime @default(now())
+
+  jobCard            JobCard  @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------
+// 5. SPARE PARTS, SUPPLIERS & INVENTORY
+// ----------------------------------------------------
+
+model ProductCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique // Filters, Lubricants, Braking, Electrical, AC, Suspension, Tyres, Accessories
+  code        String    @unique
+  description String    @default("")
+  products    Product[]
+}
+
+model Product {
+  id                 String             @id @default(uuid())
+  sku                String             @unique // e.g. BMC-FLT-001
+  partNumber         String             @default("")
+  barcode            String             @default("")
+  name               String
+  categoryId         String
+  brand              String             @default("Bharat Motor Club Genuine")
+  description        String             @default("")
+  grade              String             @default("GENUINE") // GENUINE, OEM, AFTERMARKET, REFURBISHED
+  purchaseCost       Float              @default(0)
+  sellingPrice       Float              @default(0)
+  taxRate            Float              @default(18.0) // 18% GST default
+  stockQuantity      Int                @default(0)
+  reservedQuantity   Int                @default(0)
+  reorderThreshold   Int                @default(5)
+  isCompatibleAll    Boolean            @default(false)
+  compatibilityNotes String             @default("")
+  imageUrl           String             @default("")
+  active             Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  category           ProductCategory    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  fitments           VehicleFitment[]
+  inventoryMovements InventoryMovement[]
+  partConsumptions   PartConsumption[]
+}
+
+model VehicleFitment {
+  id         String   @id @default(uuid())
+  productId  String
+  make       String
+  model      String
+  variant    String   @default("")
+  yearStart  Int      @default(2010)
+  yearEnd    Int      @default(2026)
+  engineCode String   @default("")
+  notes      String   @default("")
+
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model InventoryMovement {
+  id           String   @id @default(uuid())
+  productId    String
+  branchId     String?
+  movementType String   // PURCHASE_RECEIPT, JOB_CONSUMPTION, REFURB_CONSUMPTION, SALE_DISPATCH, RETURN, ADJUSTMENT_CORRECTION
+  quantity     Int
+  unitCost     Float    @default(0)
+  referenceId  String?  // Reference to JobCard, PO, etc.
+  notes        String   @default("")
+  recordedById String?
+  createdAt    DateTime @default(now())
+
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model PartConsumption {
+  id                 String            @id @default(uuid())
+  productId          String
+  jobCardId          String?
+  refurbishmentJobId String?
+  quantity           Int               @default(1)
+  unitPrice          Float             @default(0)
+  totalPrice         Float             @default(0)
+  consumedAt         DateTime          @default(now())
+  recordedById       String?
+
+  product            Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  jobCard            JobCard?          @relation(fields: [jobCardId], references: [id], onDelete: SetNull)
+  refurbishmentJob   RefurbishmentJob? @relation(fields: [refurbishmentJobId], references: [id], onDelete: SetNull)
+}
+
+model Supplier {
+  id            String          @id @default(uuid())
+  name          String
+  code          String          @unique
+  contactPerson String          @default("")
+  email         String          @default("")
+  phone         String          @default("")
+  gstin         String          @default("")
+  address       String          @default("")
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+
+  purchaseOrders PurchaseOrder[]
+}
+
+model PurchaseOrder {
+  id          String   @id @default(uuid())
+  poNumber    String   @unique // e.g. PO-2026-0001
+  supplierId  String
+  branchId    String?
+  status      String   @default("DRAFT") // DRAFT, ISSUED, PARTIALLY_RECEIVED, RECEIVED, CANCELLED
+  totalAmount Float    @default(0)
+  notes       String   @default("")
+  createdAt   DateTime @default(now())
+
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------
+// 6. FLEET & MEMBERSHIP DOMAIN
+// ----------------------------------------------------
+
+model FleetAccount {
+  id           String         @id @default(uuid())
+  accountCode  String         @unique // e.g. FLT-001
+  companyName  String
+  contactName  String
+  email        String         @default("")
+  phone        String
+  gstin        String         @default("")
+  address      String         @default("")
+  billingCycle String         @default("MONTHLY")
+  creditLimit  Float          @default(100000)
+  status       String         @default("ACTIVE") // ACTIVE, SUSPENDED
+  createdAt    DateTime       @default(now())
+
+  vehicles     FleetVehicle[]
+  contracts    FleetContract[]
+}
+
+model FleetVehicle {
+  id                  String       @id @default(uuid())
+  fleetAccountId      String
+  make                String
+  model               String
+  year                Int
+  registrationNumber  String       @unique
+  vin                 String       @default("")
+  assignedDriverName  String       @default("")
+  assignedDriverPhone String       @default("")
+  active              Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+
+  fleetAccount        FleetAccount @relation(fields: [fleetAccountId], references: [id], onDelete: Cascade)
+}
+
+model FleetContract {
+  id             String       @id @default(uuid())
+  fleetAccountId String
+  contractNumber String       @unique
+  startDate      DateTime
+  endDate        DateTime
+  termsJson      String       @default("{}")
+  discountRate   Float        @default(10.0) // 10% fleet discount default
+  active         Boolean      @default(true)
+
+  fleetAccount   FleetAccount @relation(fields: [fleetAccountId], references: [id], onDelete: Cascade)
+}
+
+model MembershipPlan {
+  id             String       @id @default(uuid())
+  name           String       @unique // Club Member, Gold Shield, Platinum Elite
+  tier           String       @default("SILVER") // BRONZE, SILVER, GOLD, PLATINUM
+  description    String       @default("")
+  priceAnnual    Float        @default(2999)
+  benefitsJson   String       @default("[]") // Free roadside assistance, 10% discount on labour, priority bay booking
+  durationMonths Int          @default(12)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  memberships    Membership[]
+}
+
+model Membership {
+  id               String         @id @default(uuid())
+  memberNumber     String         @unique // e.g. BMC-MEM-0001
+  userId           String
+  planId           String
+  status           String         @default("PENDING") // PENDING, ACTIVE, EXPIRED, CANCELLED
+  startDate        DateTime?
+  endDate          DateTime?
+  vehicleRegNumber String         @default("")
+  createdAt        DateTime       @default(now())
+
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan             MembershipPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------
+// 7. CRM, LEADS & NOTIFICATIONS
+// ----------------------------------------------------
+
+model CRMLead {
+  id                  String            @id @default(uuid())
+  leadNumber          String            @unique // e.g. LEAD-2026-0001
+  source              String            @default("WEBSITE") // WEBSITE, WALK_IN, PHONE, REFERRAL, ACQUISITION, SALES, WORKSHOP, FLEET, PARTS
+  department          String            @default("AUTOMOBILES") // AUTOMOBILES, GARAGE, ELECTRICALS, ELECTRONICS, AC, PARTS, FLEET, MEMBERSHIP
+  contactName         String
+  email               String            @default("")
+  phone               String
+  vehicleOfInterest   String            @default("")
+  status              String            @default("NEW") // NEW, CONTACTED, QUALIFIED, NEGOTIATION, WON, LOST
+  assignedToId        String?
+  nextFollowUpDate    DateTime?
+  notes               String            @default("")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  activities          CRMLeadActivity[]
+}
+
+model CRMLeadActivity {
+  id            String   @id @default(uuid())
+  leadId        String
+  activityType  String   // CALL, EMAIL, WHATSAPP, MEETING, NOTE, STATUS_CHANGE
+  notes         String   @default("")
+  performedById String?
+  createdAt     DateTime @default(now())
+
+  lead          CRMLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------
+// 8. AI PLATFORM & PROMPT STUDIO (Strictly Role-Governed)
+// ----------------------------------------------------
+
+model AIPromptTemplate {
+  id               String   @id @default(uuid())
+  name             String   // public_customer_assistant, valuation_researcher, seller_assistant, parts_fitment_checker, etc.
+  versionNumber    Int      @default(1)
+  purpose          String   @default("")
+  systemPrompt     String
+  allowedToolsJson String   @default("[]")
+  outputSchemaJson String   @default("{}")
+  temperature      Float    @default(0.2)
+  maxTokens        Int      @default(1000)
+  approvalStatus   String   @default("APPROVED") // DRAFT, APPROVED, DEPRECATED
+  approvedById     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model AIConversation {
+  id         String      @id @default(uuid())
+  sessionId  String
+  userId     String?
+  agentType  String      // e.g. public_discovery, seller_advisor, internal_management
+  createdAt  DateTime    @default(now())
+
+  messages   AIMessage[]
+}
+
+model AIMessage {
+  id             String         @id @default(uuid())
+  conversationId String
+  role           String         // system, user, assistant, tool
+  content        String
+  toolCallsJson  String?
+  toolResultJson String?
+  createdAt      DateTime       @default(now())
+
+  conversation   AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model AIAuditLog {
+  id                   String   @id @default(uuid())
+  agentType            String
+  userId               String?
+  userRole             String   @default("ANONYMOUS")
+  promptUsed           String
+  modelResponseRedacted String
+  toolsInvokedJson     String   @default("[]")
+  latencyMs            Int      @default(0)
+  createdAt            DateTime @default(now())
+}
+
+// ----------------------------------------------------
+// 9. GOVERNANCE, AUDIT LOGS & SETTINGS
+// ----------------------------------------------------
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorRole  String   @default("SYSTEM")
+  action     String   // e.g. SELLER_SUBMISSION_CREATED, LEGAL_ELIGIBILITY_APPROVED, OFFER_ACCEPTED, RESALE_LISTED, PAYMENT_SETTLED
+  entityName String   // e.g. AcquisitionCase, CompanyVehicle, SaleTransaction, JobCard
+  entityId   String
+  beforeJson String   @default("{}")
+  afterJson  String   @default("{}")
+  ipAddress  String   @default("")
+  userAgent  String   @default("")
+  timestamp  DateTime @default(now())
+
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  valueJson   String
+  description String   @default("")
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}

@@ -1,0 +1,79 @@
+# BHARAT MOTOR CLUB — GOOGLE CLOUD RUN DEPLOYMENT SPECIFICATION
+# Regional Deployment: asia-south1 (Mumbai, India) / asia-south2 (Delhi, India)
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: bmc-platform
+  labels:
+    cloud.googleapis.com/location: asia-south1
+  annotations:
+    run.googleapis.com/launch-stage: GA
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - image: asia-south1-docker.pkg.dev/bharat-motor-club/containers/bmc-platform:latest
+          ports:
+            - name: http1
+              containerPort: 3000
+          resources:
+            limits:
+              cpu: "1000m"
+              memory: "1024Mi"
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3000"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: NEXTAUTH_URL
+              value: "https://bharatmotorclub.com"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: bmc-cloudsql-postgres-url
+                  key: database_url
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bmc-session-secret
+                  key: secret
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bmc-gemini-api-key
+                  key: api_key
+            - name: RAZORPAY_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: bmc-razorpay-credentials
+                  key: key_id
+            - name: RAZORPAY_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: bmc-razorpay-credentials
+                  key: key_secret
+          startupProbe:
+            httpGet:
+              path: /api/auth/me
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /api/auth/me
+              port: 3000
+            periodSeconds: 15
+

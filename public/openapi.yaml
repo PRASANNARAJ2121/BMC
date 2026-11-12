@@ -1,0 +1,219 @@
+openapi: 3.0.3
+info:
+  title: Bharat Motor Club (BMC) Digital Platform API
+  description: >
+    Official REST API for Bharat Motor Club — "One Club. Every Automotive Need."
+    Unifies confidential private vehicle acquisition, certified pre-owned resale,
+    workshop operations, genuine parts, club membership, fleet solutions, and telematics.
+  version: 1.0.0
+  contact:
+    name: Bharat Motor Club Engineering
+    email: api-support@bharatmotorclub.local
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development server
+  - url: https://api.bharatmotorclub.com/api
+    description: Production Cloud Run cluster
+
+paths:
+  /vehicles:
+    get:
+      summary: Search and browse certified company-owned pre-owned resale inventory
+      description: Returns sanitized public listings that have passed 120-point QC and legal clearance.
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search term (make, model, variant)
+        - name: make
+          in: query
+          schema:
+            type: string
+        - name: fuel
+          in: query
+          schema:
+            type: string
+        - name: body
+          in: query
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [featured, price_low_high, price_high_low, year_newest]
+      responses:
+        '200':
+          description: List of approved certified vehicle listings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listings:
+                    type: array
+                    items:
+                      type: object
+
+  /vehicles/{id}:
+    get:
+      summary: Get certified vehicle details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Public vehicle listing details with full inspection report and warranty terms
+        '404':
+          description: Vehicle listing not found
+
+  /seller/cases:
+    post:
+      summary: Submit a confidential vehicle acquisition intake lead
+      description: Private seller submission. Seller identity and asking price are strictly isolated from public search.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [make, model, year, registrationNumber, sellerAskingPrice]
+              properties:
+                make:
+                  type: string
+                model:
+                  type: string
+                year:
+                  type: integer
+                registrationNumber:
+                  type: string
+                sellerAskingPrice:
+                  type: number
+      responses:
+        '201':
+          description: Confidential acquisition case created
+        '400':
+          description: Invalid input
+
+  /telematics/obd/scan:
+    post:
+      summary: Ingest OBD-II diagnostic trouble code (DTC) scan
+      description: Parses standard SAE J2012 DTCs (Powertrain, Chassis, Body, Network) and optionally appends tasks to a workshop job card.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rawInput]
+              properties:
+                rawInput:
+                  type: string
+                  example: "P0300 P0420 C0035"
+                jobCardId:
+                  type: string
+                  description: Optional job card ID to append repair tasks to
+      responses:
+        '200':
+          description: Diagnostic report or job card update summary
+        '400':
+          description: Invalid input
+
+  /telematics/fastag:
+    post:
+      summary: Process automated FASTag RFID gate reader event
+      description: Validates appointment entry or denies exit if outstanding unpaid workshop invoices exist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vehicleRegNumber, gateType]
+              properties:
+                tagId:
+                  type: string
+                vehicleRegNumber:
+                  type: string
+                gateType:
+                  type: string
+                  enum: [ENTRY, EXIT]
+                scannerId:
+                  type: string
+      responses:
+        '200':
+          description: Boom barrier authorization command (OPEN_BARRIER or HOLD_BARRIER)
+        '400':
+          description: Missing vehicle registration number
+
+  /telematics/metrics:
+    get:
+      summary: Telematics & gate system operational statistics
+      responses:
+        '200':
+          description: Counts of processed OBD-II scans and FASTag gate events
+
+  /ai/chat:
+    post:
+      summary: Query role-governed AI domain assistant
+      description: Directs queries to one of 14 role-bounded personas with strict database grounding and fallback.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                agentType:
+                  type: string
+                  default: public_customer_assistant
+                  enum:
+                    - public_customer_assistant
+                    - buyer_vehicle_discovery
+                    - diagnostic_advisor
+                    - parts_recommender
+                    - fleet_advisor
+                    - garage_service_assistant
+                    - membership_support_assistant
+                    - electrical_electronics_ac_assistant
+                query:
+                  type: string
+      responses:
+        '200':
+          description: Assistant response with audit log metadata
+        '400':
+          description: Query parameter missing
+
+  /payments/create-order:
+    post:
+      summary: Create an online payment order (Razorpay / UPI)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, purpose]
+              properties:
+                amount:
+                  type: number
+                purpose:
+                  type: string
+                  enum: [VEHICLE_RESERVATION, MEMBERSHIP_PURCHASE, WORKSHOP_INVOICE]
+      responses:
+        '200':
+          description: Payment order reference and gateway checkout details
+
+  /products:
+    get:
+      summary: Search genuine spare parts catalogue
+      responses:
+        '200':
+          description: Active inventory list with SKU, category, and pricing
+

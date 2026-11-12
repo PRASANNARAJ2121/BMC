@@ -1,0 +1,35 @@
+{
+  "name": "Bharat Motor Club",
+  "short_name": "BMC Ops",
+  "description": "One Club. Every Automotive Need. Unified automotive ecosystem, door-step inspection & workshop command.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A0F1D",
+  "theme_color": "#0F1E36",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Inspector Tool",
+      "url": "/inspector",
+      "description": "120-Point Doorstep Vehicle Technical Assessment"
+    },
+    {
+      "name": "Acquisition Queue",
+      "url": "/admin/acquisition",
+      "description": "Confidential Vehicle Intake"
+    },
+    {
+      "name": "Workshop Job Cards",
+      "url": "/admin/jobs",
+      "description": "Active Service Orders"
+    }
+  ]
+}
+

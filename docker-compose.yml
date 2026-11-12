@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------
+  # 1. BHARAT MOTOR CLUB — WEB PLATFORM CONTAINER
+  # ----------------------------------------------------
+  bmc-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bmc_web_app
+    restart: unless-stopped
+    ports:
+      - "3010:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - DATABASE_URL=postgresql://bmc_admin:bmc_secure_password_2026@bmc-postgres:5432/bharat_motor_club?schema=public
+      - SESSION_SECRET=bmc_prod_jwt_secret_token_secure_random_seed_2026
+      - NEXTAUTH_URL=http://localhost:3000
+      - REDIS_URL=redis://bmc-redis:6379
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-}
+    volumes:
+      - bmc_storage:/app/storage
+    depends_on:
+      bmc-postgres:
+        condition: service_healthy
+      bmc-redis:
+        condition: service_started
+
+  # ----------------------------------------------------
+  # 2. MANAGED POSTGRESQL 16 PRODUCTION DATABASE
+  # ----------------------------------------------------
+  bmc-postgres:
+    image: postgres:16-alpine
+    container_name: bmc_postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bmc_admin
+      POSTGRES_PASSWORD: bmc_secure_password_2026
+      POSTGRES_DB: bharat_motor_club
+    ports:
+      - "5433:5432"
+    volumes:
+      - bmc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bmc_admin -d bharat_motor_club"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------
+  # 3. REDIS 7 CACHE & SESSION STORE
+  # ----------------------------------------------------
+  bmc-redis:
+    image: redis:7-alpine
+    container_name: bmc_redis_cache
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - bmc_redisdata:/data
+
+# ----------------------------------------------------
+# PERSISTENT STORAGE VOLUMES
+# ----------------------------------------------------
+volumes:
+  bmc_pgdata:
+    name: bmc_pgdata
+  bmc_redisdata:
+    name: bmc_redisdata
+  bmc_storage:
+    name: bmc_storage
+
